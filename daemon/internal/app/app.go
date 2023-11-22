@@ -17,6 +17,8 @@ import (
 	"time"
 )
 
+// мне в падлу здесь писать доку, можно на этот файл не обращать внимания
+
 func Run(cfg *config.Config) {
 	cntxt := &daemon.Context{
 		PidFileName: "distorage_daemon.pid",

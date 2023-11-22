@@ -11,13 +11,17 @@ import (
 	"github.com/wealdtech/go-merkletree/keccak256"
 )
 
+// CryptoUC структура, методы которой отвечают за криптиграфию
+// (генерацию ключей, проверку ЭП и т.д.)
 type CryptoUC struct {
 }
 
+// NewCryptoUC создает экземпляр структуры для дальнейшего использования
 func NewCryptoUC() *CryptoUC {
 	return &CryptoUC{}
 }
 
+// GenerateECDHKey генерирут приватный ключ для обмена диффи-хеллмана
 func (c *CryptoUC) GenerateECDHKey() (*ecdh.PrivateKey, error) {
 	curve := ecdh.X25519()
 	priv, err := curve.GenerateKey(rand.Reader)
@@ -27,6 +31,7 @@ func (c *CryptoUC) GenerateECDHKey() (*ecdh.PrivateKey, error) {
 	return priv, nil
 }
 
+// ExecuteECDH вычисляет общий секрет из собственного приватного ключа и предоставленного публичного ключа
 func (c *CryptoUC) ExecuteECDH(own *ecdh.PrivateKey, remoteBytes []byte) ([]byte, error) {
 	remote, err := x509.ParsePKIXPublicKey(remoteBytes)
 	if err != nil {
@@ -40,6 +45,16 @@ func (c *CryptoUC) ExecuteECDH(own *ecdh.PrivateKey, remoteBytes []byte) ([]byte
 	}
 }
 
+// VerifyAddress проверяет адрес клиента.
+// Схема следующая:
+//
+// Клиент локально генерирует последовательность из 32 байт (nonce);
+//
+// Далее шифрует её при помоще AES в режиме ECB с ключем, полученным при помощи обмена диффи-хеллмана;
+//
+// И затем берет от результата keccak256 хэш и подписывает его с помощью своего приватного ключа.
+//
+// Клиент отправляет плеинтекст nonce, подпись, и, возможно, тело файла.
 func (c *CryptoUC) VerifyAddress(aesKey []byte, nonce []byte, sig []byte, pubKeyBytes []byte) error {
 	if len(nonce) != aes.BlockSize {
 		return errors.New(fmt.Sprintf(
@@ -72,6 +87,7 @@ func (c *CryptoUC) VerifyAddress(aesKey []byte, nonce []byte, sig []byte, pubKey
 	return nil
 }
 
+// GetAddress получает адрес клиента из предоставленного публичного ключа
 func (c *CryptoUC) GetAddress(pubKeyBytes []byte) []byte {
 	keccak := keccak256.New()
 	return keccak.Hash(pubKeyBytes)[12:]

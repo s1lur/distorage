@@ -18,4 +18,6 @@ type Storage interface {
 	DeleteFile(fileName string, addr []byte) error
 	GetAddress(contents []byte) []byte
 	GetFileContents(contents []byte) []byte
+	CheckExistence(fileName string) bool
+	CanBeStored(fileName string, addr []byte) bool
 }
