@@ -77,7 +77,7 @@ func Run(cfg *config.Config) {
 }
 
 func connectToServer(serverIpAddr string, addr []byte, interrupt chan os.Signal) {
-	u := url.URL{Scheme: "ws", Host: serverIpAddr, Path: "/"}
+	u := url.URL{Scheme: "ws", Host: serverIpAddr, Path: "/connect/"}
 	log.Printf("connecting to %s", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
@@ -91,24 +91,16 @@ func connectToServer(serverIpAddr string, addr []byte, interrupt chan os.Signal)
 	err = c.WriteMessage(websocket.TextMessage, addr)
 	if err != nil {
 		log.Fatal("connectToServer - error sending message: ", err)
+		return
 	}
-
 	go func() {
 		defer close(done)
-		for {
-			mt, _, err := c.ReadMessage()
-			if err != nil {
-				log.Println("connectToServer - read: ", err)
-				return
-			}
-			if mt == websocket.PingMessage {
-				c.WriteMessage(websocket.PongMessage, []byte{})
-				if err != nil {
-					log.Println("connectToServer - write:", err)
-					return
-				}
-			}
+		err = c.WriteMessage(websocket.PingMessage, []byte{})
+		if err != nil {
+			log.Println("connectToServer - write:", err)
+			return
 		}
+		time.Sleep(20)
 	}()
 
 	ticker := time.NewTicker(time.Second)

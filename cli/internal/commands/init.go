@@ -75,7 +75,7 @@ func (c *Commands) init(cCtx *cli.Context) error {
 	}
 
 	cliConfig := map[string]any{
-		"serverIpAddr":      "127.0.0.1",
+		"serverIpAddr":      "127.0.0.1:8000",
 		"replication_count": 5,
 	}
 	f, err = os.Create(path.Join(folderPath, "cli.toml"))

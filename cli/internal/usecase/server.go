@@ -4,21 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 )
 
 type ServerUC struct {
-	serverIpAddr string
+	serverAddr string
 }
 
 func NewServerUC(serverIpAddr string) *ServerUC {
+	u := url.URL{Scheme: "http", Host: serverIpAddr, Path: "/nodes"}
 	return &ServerUC{
-		serverIpAddr: serverIpAddr,
+		serverAddr: u.String(),
 	}
 }
 
 func (s *ServerUC) GetAvailableNodes() (map[string]string, error) {
 	availableNodes := make(map[string]string)
-	resp, err := http.Get(s.serverIpAddr)
+	resp, err := http.Get(s.serverAddr)
 	if err != nil {
 		return nil, err
 	}
