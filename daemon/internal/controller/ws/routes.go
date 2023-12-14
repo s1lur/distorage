@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"crypto/aes"
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
@@ -114,16 +115,16 @@ func (routes *Routes) Store(w http.ResponseWriter, r *http.Request) {
 	// получение названия файла и проверка длины
 	vars := mux.Vars(r)
 	fileId := vars["fileId"]
-	if checkFileId(fileId) {
+	if !checkFileId(fileId) {
 		_ = connection.WriteMessage(websocket.BinaryMessage, []byte{0x01, 0x90})
 		return
 	}
 
 	// сохранение данных, полученных из преамбулы, в соответствующие переменные
 	session, err := routes.executePreamble(connection)
-	nonce := session.requestMessage[:32]
-	sig := session.requestMessage[32:104]
-	body := session.requestMessage[104:]
+	nonce := session.requestMessage[:aes.BlockSize]
+	sig := session.requestMessage[aes.BlockSize : aes.BlockSize+72]
+	body := session.requestMessage[aes.BlockSize+72:]
 
 	// проверка адреса (см. VerifyAddress)
 	err = routes.cryptoUC.VerifyAddress(
@@ -178,7 +179,7 @@ func (routes *Routes) Get(w http.ResponseWriter, r *http.Request) {
 	// получение названия файла и проверка длины
 	vars := mux.Vars(r)
 	fileId := vars["fileId"]
-	if checkFileId(fileId) {
+	if !checkFileId(fileId) {
 		_ = connection.WriteMessage(websocket.BinaryMessage, []byte{0x01, 0x90})
 		return
 	}
@@ -189,8 +190,8 @@ func (routes *Routes) Get(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("ws - get - %w", err)
 		return
 	}
-	nonce := session.requestMessage[:32]
-	sig := session.requestMessage[32:104]
+	nonce := session.requestMessage[:aes.BlockSize]
+	sig := session.requestMessage[aes.BlockSize : aes.BlockSize+72]
 
 	// проверка адреса (см. VerifyAddress)
 	err = routes.cryptoUC.VerifyAddress(
@@ -241,7 +242,7 @@ func (routes *Routes) Delete(w http.ResponseWriter, r *http.Request) {
 	// получение названия файла и проверка длины
 	vars := mux.Vars(r)
 	fileId := vars["fileId"]
-	if checkFileId(fileId) {
+	if !checkFileId(fileId) {
 		_ = connection.WriteMessage(websocket.BinaryMessage, []byte{0x01, 0x90})
 		return
 	}
@@ -252,8 +253,8 @@ func (routes *Routes) Delete(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("ws - delete - %w", err)
 		return
 	}
-	nonce := session.requestMessage[:32]
-	sig := session.requestMessage[32:104]
+	nonce := session.requestMessage[:aes.BlockSize]
+	sig := session.requestMessage[aes.BlockSize : aes.BlockSize+72]
 
 	// проверка адреса (см. VerifyAddress)
 	err = routes.cryptoUC.VerifyAddress(

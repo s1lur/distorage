@@ -48,7 +48,7 @@ func (c *CryptoUC) ExecuteECDH(own *ecdh.PrivateKey, remoteBytes []byte) ([]byte
 // VerifyAddress проверяет адрес клиента.
 // Схема следующая:
 //
-// Клиент локально генерирует последовательность из 32 байт (nonce);
+// Клиент локально генерирует последовательность из 16 байт (nonce);
 //
 // Далее шифрует её при помоще AES в режиме ECB с ключем, полученным при помощи обмена диффи-хеллмана;
 //
@@ -69,7 +69,7 @@ func (c *CryptoUC) VerifyAddress(aesKey []byte, nonce []byte, sig []byte, pubKey
 		return err
 	}
 	encNonce := make([]byte, aes.BlockSize)
-	block.Encrypt(nonce, encNonce)
+	block.Encrypt(encNonce, nonce)
 	keccak := keccak256.New()
 	encNonceHash := keccak.Hash(encNonce)
 	pubKey, err := x509.ParsePKIXPublicKey(pubKeyBytes)
