@@ -9,10 +9,10 @@ import (
 
 type (
 	Config struct {
-		Port         string `toml:"port"`
-		ServerIpAddr string `toml:"server_ip_addr"`
-		BasePath     string `toml:"base_path" env-default:"~/.distorage/"`
-		Addr         string `toml:"addr"`
+		Port      string `toml:"port"`
+		ServerURL string `toml:"server_url"`
+		BasePath  string `toml:"base_path" env-default:"~/.distorage/"`
+		Addr      string `toml:"addr"`
 	}
 )
 

@@ -6,8 +6,6 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// TODO
-// config - server addr, replication_count (на сколько устройств загружаем каждый чанк)
 // uploaded file info file format
 /*
 {
@@ -74,11 +72,17 @@ func NewCommands(cfg *config.Config, c usecase.Crypto, s usecase.Server, st usec
 	return &Commands{cfg: cfg, crypto: c, server: s, storage: st}
 }
 
+func InitCommandOnly(c usecase.Crypto, s usecase.Storage) []*cli.Command {
+	commands := NewCommands(nil, c, nil, s)
+	return []*cli.Command{commands.GetInitCommand()}
+}
+
 func (c *Commands) GetCommands() []*cli.Command {
 	return []*cli.Command{
 		c.GetUploadCommand(),
 		c.GetDownloadCommand(),
 		c.GetListCommand(),
 		c.GetDeleteCommand(),
+		c.GetInitCommand(),
 	}
 }

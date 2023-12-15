@@ -24,7 +24,7 @@ func (c *Commands) GetDownloadCommand() *cli.Command {
 }
 
 func (c *Commands) downloadFile(conn *websocket.Conn) ([]byte, error) {
-	ecdsaPrivKey, err := c.crypto.ReadECDSAPrivKey("~/.distorage/keys.json")
+	ecdsaPrivKey, err := c.crypto.ReadECDSAPrivKey()
 	if err != nil {
 		return nil, err
 	}
@@ -64,9 +64,10 @@ func (c *Commands) download(cCtx *cli.Context) error {
 		totalFiles, deletedFiles, err := c.Cleanup(cCtx)
 		if verbosity > 0 {
 			if err != nil {
-				log.Printf("error during cleanup: %e\n", err)
+				fmt.Printf("error during cleanup: %e\n", err)
+			} else if totalFiles > 0 {
+				fmt.Printf("successfully cleaned up %d/%d files\n", deletedFiles, totalFiles)
 			}
-			log.Printf("successfully cleaned up %d/%d files", deletedFiles, totalFiles)
 		}
 	}
 	// Комментарий-план
@@ -86,6 +87,13 @@ func (c *Commands) download(cCtx *cli.Context) error {
 	}
 	fileInfo, err := c.storage.GetFileInfo(uuid)
 
+	if err != nil {
+		return err
+	}
+	if !fileInfo.Available {
+		return fmt.Errorf("file %s is already deleted", uuid)
+	}
+
 	if verbosity > 1 {
 		log.Println("fetching available nodes")
 	}
@@ -94,7 +102,7 @@ func (c *Commands) download(cCtx *cli.Context) error {
 		return err
 	}
 	if verbosity > 1 {
-		log.Println("successfully fetched %d nodes", len(nodes))
+		log.Printf("successfully fetched %d nodes\n", len(nodes))
 	}
 
 	var bar *progressbar.ProgressBar
@@ -104,24 +112,35 @@ func (c *Commands) download(cCtx *cli.Context) error {
 	body := make([]byte, fileInfo.Size)
 	ptr := 0
 	for i, chunk := range fileInfo.Chunks {
+		if verbosity > 1 {
+			log.Printf("fetching chunk #%d\n", i)
+		}
 		var chunkBody []byte
 		for _, nodeAddr := range chunk.Nodes {
 			nodeIp, exists := nodes[nodeAddr]
 			if !exists {
 				if verbosity > 1 {
-					log.Println("node %s unavailable, continuing", nodeAddr)
+					log.Printf("node %s unavailable, continuing\n", nodeAddr)
 				}
 				continue
 			}
+			nodeIp = fmt.Sprintf("%s:53591", nodeIp)
 
 			u := url.URL{Scheme: "ws", Host: nodeIp, Path: fmt.Sprintf("/get/%s", chunk.Hash)}
-			if verbosity > 1 {
-				log.Printf("connecting to %s", u.String())
-			}
-			conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+			nodeURL, err := url.PathUnescape(u.String())
 			if err != nil {
 				if verbosity > 1 {
-					log.Fatalf("dial to %s error: %e", nodeIp, err)
+					log.Printf("error decoding node url: %e\n", err)
+				}
+				continue
+			}
+			if verbosity > 1 {
+				log.Printf("connecting to %s", nodeURL)
+			}
+			conn, _, err := websocket.DefaultDialer.Dial(nodeURL, nil)
+			if err != nil {
+				if verbosity > 1 {
+					log.Printf("dial to %s error: %e\n", nodeIp, err)
 				}
 				continue
 			}
@@ -129,20 +148,22 @@ func (c *Commands) download(cCtx *cli.Context) error {
 			chunkBody, err = c.downloadFile(conn)
 			if err != nil {
 				if verbosity > 1 {
-					log.Fatalf("failed to receive chunk #%d from %s: %e", i, nodeIp, err)
+					log.Printf("failed to receive chunk #%d from %s: %e\n", i, nodeIp, err)
 				}
+				chunkBody = []byte{}
 				continue
 			}
 			if bodyHash := hex.EncodeToString(c.crypto.Hash(chunkBody)); chunk.Hash != bodyHash {
 				if verbosity > 1 {
-					log.Fatalf(
-						"integrity check failed for chunk #%d from node %s: stored %s, received %s",
+					log.Printf(
+						"integrity check failed for chunk #%d from node %s: stored %s, received %s\n",
 						i,
 						nodeAddr,
 						chunk.Hash,
 						bodyHash,
 					)
 				}
+				chunkBody = []byte{}
 				continue
 			}
 			if verbosity == 1 {
@@ -153,6 +174,11 @@ func (c *Commands) download(cCtx *cli.Context) error {
 		if len(chunkBody) == 0 {
 			return fmt.Errorf("no nodes available for chunk #%d, sorry :(", i)
 		}
+		if ptr+len(chunkBody) > cap(body) {
+			var tmp []byte
+			tmp, body = body, make([]byte, ptr+len(chunkBody))
+			copy(body, tmp)
+		}
 		copy(body[ptr:ptr+len(chunkBody)], chunkBody)
 		ptr += len(chunkBody)
 	}
@@ -160,9 +186,9 @@ func (c *Commands) download(cCtx *cli.Context) error {
 		_ = bar.Finish()
 	}
 	if verbosity > 0 {
-		log.Printf("successfully downloaded file, decrypting verifying signature...\n")
+		fmt.Printf("successfully downloaded file, decrypting and verifying signature...\n")
 	}
-	aesKey, err := c.crypto.ReadAesKey("~/.distorage/keys.json")
+	aesKey, err := c.crypto.ReadAesKey()
 	if err != nil {
 		return err
 	}
@@ -170,7 +196,7 @@ func (c *Commands) download(cCtx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if len(body) != fileInfo.Size { // probably redundant
+	if len(decryptedFile) != fileInfo.Size { // probably redundant
 		return fmt.Errorf("file size mismatch: local %d, got %d", fileInfo.Size, len(body))
 	}
 	if hash := hex.EncodeToString(c.crypto.Hash(decryptedFile)); fileInfo.Hash != hash {
@@ -183,7 +209,7 @@ func (c *Commands) download(cCtx *cli.Context) error {
 		return err
 	}
 	if verbosity > 0 {
-		log.Printf("signature verified, writing to %s", filePath)
+		fmt.Printf("signature verified, writing to %s\n", filePath)
 	}
 	file, err := os.Create(filePath)
 	_, err = file.Write(decryptedFile)
@@ -191,7 +217,7 @@ func (c *Commands) download(cCtx *cli.Context) error {
 		return err
 	}
 	if verbosity > 0 {
-		log.Printf("successfully downloaded file %s, stored in CWD\n", fileInfo.Name)
+		fmt.Printf("successfully downloaded file %s, stored in CWD\n", fileInfo.Name)
 	}
 	return nil
 }

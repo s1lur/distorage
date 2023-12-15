@@ -17,10 +17,11 @@ import (
 )
 
 type CryptoUC struct {
+	keysFilePath string
 }
 
-func NewCryptoUC() *CryptoUC {
-	return &CryptoUC{}
+func NewCryptoUC(keysFilePath string) *CryptoUC {
+	return &CryptoUC{keysFilePath: keysFilePath}
 }
 
 func (c *CryptoUC) GenerateECDHKey() (*ecdh.PrivateKey, error) {
@@ -45,8 +46,8 @@ func (c *CryptoUC) ExecuteECDH(own *ecdh.PrivateKey, remoteBytes []byte) ([]byte
 	}
 }
 
-func (c *CryptoUC) ReadECDSAPrivKey(path string) (*ecdsa.PrivateKey, error) {
-	f, err := os.Open(path)
+func (c *CryptoUC) ReadECDSAPrivKey() (*ecdsa.PrivateKey, error) {
+	f, err := os.Open(c.keysFilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -64,8 +65,8 @@ func (c *CryptoUC) ReadECDSAPrivKey(path string) (*ecdsa.PrivateKey, error) {
 	return x509.ParseECPrivateKey(ecdsaKeyBytes)
 }
 
-func (c *CryptoUC) ReadAesKey(path string) ([]byte, error) {
-	f, err := os.Open(path)
+func (c *CryptoUC) ReadAesKey() ([]byte, error) {
+	f, err := os.Open(c.keysFilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -97,10 +98,13 @@ func (c *CryptoUC) AESEncrypt(key []byte, plaintext []byte) ([]byte, error) {
 		return nil, err
 	}
 	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
-	return ciphertext, nil
+	res := make([]byte, len(nonce)+len(ciphertext))
+	copy(res[:len(nonce)], nonce)
+	copy(res[len(nonce):], ciphertext)
+	return res, nil
 }
 
-func (c *CryptoUC) AESDecrypt(key []byte, ciphertext []byte) ([]byte, error) {
+func (c *CryptoUC) AESDecrypt(key []byte, sealed []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -110,7 +114,7 @@ func (c *CryptoUC) AESDecrypt(key []byte, ciphertext []byte) ([]byte, error) {
 		panic(err)
 	}
 	nonceSize := gcm.NonceSize()
-	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	nonce, ciphertext := sealed[:nonceSize], sealed[nonceSize:]
 	return gcm.Open(nil, nonce, ciphertext, nil)
 }
 
@@ -131,9 +135,10 @@ func (c *CryptoUC) PrepareVerification(aesKey []byte, ecdsaKey *ecdsa.PrivateKey
 	if err != nil {
 		return nil, err
 	}
-	res := make([]byte, len(nonce)+len(sig))
-	copy(res[:len(nonce)], nonce)
-	copy(res[len(nonce):], sig)
+	res := make([]byte, 1+len(nonce)+len(sig))
+	res[0] = byte(len(sig))
+	copy(res[1:len(nonce)+1], nonce)
+	copy(res[1+len(nonce):], sig)
 	return res, nil
 }
 

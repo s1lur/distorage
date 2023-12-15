@@ -65,7 +65,7 @@ func (routes *Routes) executePreamble(connection *websocket.Conn) (*sessionInfo,
 		return nil, err
 	}
 
-	// получение публичного ключа электронной подписи клиента
+	// получение публичного ключа электронной подписи клиента и ключа для обмена диффи-хеллмана
 	mt, message, err := connection.ReadMessage()
 	if mt != websocket.BinaryMessage {
 		return nil, fmt.Errorf("wrong message type received: %d", mt)
@@ -73,19 +73,11 @@ func (routes *Routes) executePreamble(connection *websocket.Conn) (*sessionInfo,
 	if err != nil {
 		return nil, err
 	}
-	remotePubKey := message
-
-	// получение публичного ключа клиента для обмена диффи-хеллмана
-	mt, message, err = connection.ReadMessage()
-	if mt != websocket.BinaryMessage {
-		return nil, fmt.Errorf("wrong message type received: %d", mt)
-	}
-	if err != nil {
-		return nil, err
-	}
+	pubKeyEndPos := len(message) - len(marshalledPubKey)
+	remotePubKey := message[:pubKeyEndPos]
 
 	// вычисление общего секрета
-	sharedKey, err := routes.cryptoUC.ExecuteECDH(privKey, message)
+	sharedKey, err := routes.cryptoUC.ExecuteECDH(privKey, message[pubKeyEndPos:])
 	if err != nil {
 		return nil, err
 	}
@@ -122,9 +114,10 @@ func (routes *Routes) Store(w http.ResponseWriter, r *http.Request) {
 
 	// сохранение данных, полученных из преамбулы, в соответствующие переменные
 	session, err := routes.executePreamble(connection)
-	nonce := session.requestMessage[:aes.BlockSize]
-	sig := session.requestMessage[aes.BlockSize : aes.BlockSize+72]
-	body := session.requestMessage[aes.BlockSize+72:]
+	sigSize := session.requestMessage[0]
+	nonce := session.requestMessage[1 : 1+aes.BlockSize]
+	sig := session.requestMessage[1+aes.BlockSize : 1+aes.BlockSize+sigSize]
+	body := session.requestMessage[1+aes.BlockSize+sigSize:]
 
 	// проверка адреса (см. VerifyAddress)
 	err = routes.cryptoUC.VerifyAddress(
@@ -134,7 +127,7 @@ func (routes *Routes) Store(w http.ResponseWriter, r *http.Request) {
 		session.remotePubKey,
 	)
 	if err != nil {
-		log.Fatalf("ws - store - %w", err)
+		log.Printf("ws - store - %w\n", err)
 		return
 	}
 
@@ -154,7 +147,7 @@ func (routes *Routes) Store(w http.ResponseWriter, r *http.Request) {
 		body,
 	)
 	if err != nil {
-		log.Fatalf("ws - store - %w", err)
+		log.Printf("ws - store - %w\n", err)
 		return
 	}
 
@@ -163,7 +156,7 @@ func (routes *Routes) Store(w http.ResponseWriter, r *http.Request) {
 		websocket.BinaryMessage,
 		[]byte{0xc8})
 	if err != nil {
-		log.Fatalf("ws - store - %w", err)
+		log.Printf("ws - store - %w\n", err)
 		return
 	}
 }
@@ -187,11 +180,12 @@ func (routes *Routes) Get(w http.ResponseWriter, r *http.Request) {
 	// сохранение данных, полученных из преамбулы, в соответствующие переменные
 	session, err := routes.executePreamble(connection)
 	if err != nil {
-		log.Fatalf("ws - get - %w", err)
+		log.Printf("ws - get - %w\n", err)
 		return
 	}
-	nonce := session.requestMessage[:aes.BlockSize]
-	sig := session.requestMessage[aes.BlockSize : aes.BlockSize+72]
+	sigSize := session.requestMessage[0]
+	nonce := session.requestMessage[1 : 1+aes.BlockSize]
+	sig := session.requestMessage[1+aes.BlockSize : 1+aes.BlockSize+sigSize]
 
 	// проверка адреса (см. VerifyAddress)
 	err = routes.cryptoUC.VerifyAddress(
@@ -201,7 +195,7 @@ func (routes *Routes) Get(w http.ResponseWriter, r *http.Request) {
 		session.remotePubKey,
 	)
 	if err != nil {
-		log.Fatalf("ws - get - %w", err)
+		log.Printf("ws - get - %w\n", err)
 		return
 	}
 
@@ -217,7 +211,7 @@ func (routes *Routes) Get(w http.ResponseWriter, r *http.Request) {
 	// чтение файл из файловой системы устройства (внутри метода идет проверка адреса)
 	contents, err := routes.storageUC.ReadFile(fileId, remoteAddr)
 	if err != nil {
-		log.Fatalf("ws - get - %w", err)
+		log.Printf("ws - get - %w\n", err)
 		return
 	}
 
@@ -226,7 +220,7 @@ func (routes *Routes) Get(w http.ResponseWriter, r *http.Request) {
 		websocket.BinaryMessage,
 		routes.storageUC.GetFileContents(contents))
 	if err != nil {
-		log.Fatalf("ws - get - %w", err)
+		log.Printf("ws - get - %w\n", err)
 		return
 	}
 }
@@ -250,11 +244,12 @@ func (routes *Routes) Delete(w http.ResponseWriter, r *http.Request) {
 	// сохранение данных, полученных из преамбулы, в соответствующие переменные
 	session, err := routes.executePreamble(connection)
 	if err != nil {
-		log.Fatalf("ws - delete - %w", err)
+		log.Printf("ws - delete - %w\n", err)
 		return
 	}
-	nonce := session.requestMessage[:aes.BlockSize]
-	sig := session.requestMessage[aes.BlockSize : aes.BlockSize+72]
+	sigSize := session.requestMessage[0]
+	nonce := session.requestMessage[1 : 1+aes.BlockSize]
+	sig := session.requestMessage[1+aes.BlockSize : 1+aes.BlockSize+sigSize]
 
 	// проверка адреса (см. VerifyAddress)
 	err = routes.cryptoUC.VerifyAddress(
@@ -264,7 +259,7 @@ func (routes *Routes) Delete(w http.ResponseWriter, r *http.Request) {
 		session.remotePubKey,
 	)
 	if err != nil {
-		log.Fatalf("ws - delete - %w", err)
+		log.Printf("ws - delete - %w\n", err)
 		return
 	}
 
@@ -280,7 +275,7 @@ func (routes *Routes) Delete(w http.ResponseWriter, r *http.Request) {
 	// удаление файла из файловой системы устройства (внутри метода идет проверка адреса)
 	err = routes.storageUC.DeleteFile(fileId, remoteAddr)
 	if err != nil {
-		log.Fatalf("ws - delete - %w", err)
+		log.Printf("ws - delete - %w\n", err)
 		return
 	}
 
@@ -290,13 +285,13 @@ func (routes *Routes) Delete(w http.ResponseWriter, r *http.Request) {
 		[]byte{0xcc},
 	)
 	if err != nil {
-		log.Fatalf("ws - delete - %w", err)
+		log.Printf("ws - delete - %w\n", err)
 		return
 	}
 }
 
 func checkFileId(fileId string) bool {
-	if len(fileId) != 32 {
+	if len(fileId) != 64 {
 		return false
 	}
 	dst := make([]byte, 32)

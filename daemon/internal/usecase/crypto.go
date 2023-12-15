@@ -78,7 +78,7 @@ func (c *CryptoUC) VerifyAddress(aesKey []byte, nonce []byte, sig []byte, pubKey
 	}
 	switch v := pubKey.(type) {
 	case *ecdsa.PublicKey:
-		if !ecdsa.VerifyASN1(v, encNonceHash[:], sig) {
+		if !ecdsa.VerifyASN1(v, encNonceHash, sig) {
 			return errors.New("signature check failed")
 		}
 	default:

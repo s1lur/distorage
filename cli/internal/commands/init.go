@@ -21,13 +21,23 @@ func (c *Commands) GetInitCommand() *cli.Command {
 		Name:    "init",
 		Aliases: []string{"i"},
 		Usage:   "initialize the cli (generate necessary keys)",
-		Action:  c.download,
+		Action:  c.init,
 	}
 }
 
 func (c *Commands) init(cCtx *cli.Context) error {
-	folderPath := "~/.distorage/"
-	err := os.MkdirAll(folderPath, os.ModePerm)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("error finding home directory")
+	}
+	folderPath := path.Join(homeDir, ".distorage")
+	err = os.MkdirAll(folderPath, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	storePath := path.Join(folderPath, "store")
+	err = os.MkdirAll(storePath, os.ModePerm)
 	if err != nil {
 		return err
 	}
@@ -51,17 +61,17 @@ func (c *Commands) init(cCtx *cli.Context) error {
 	ecdsaKeyStr := hex.EncodeToString(ecdsaKeyBytes)
 
 	ecdsaPubKey := ecdsaKey.PublicKey
-	ecdsaPubKeyBytes, err := x509.MarshalPKIXPublicKey(ecdsaPubKey)
+	ecdsaPubKeyBytes, err := x509.MarshalPKIXPublicKey(&ecdsaPubKey)
 	if err != nil {
 		return err
 	}
 	addr := hex.EncodeToString(c.crypto.GetAddress(ecdsaPubKeyBytes))
 
 	daemonConfig := map[string]any{
-		"port":           "53591",
-		"server_ip_addr": "127.0.0.1", // TODO
-		"base_path":      folderPath,
-		"addr":           addr, //адрес вершины в графе системы
+		"port":       "53591",
+		"server_url": "127.0.0.1:8000/connect",
+		"base_path":  folderPath,
+		"addr":       addr, //адрес вершины в графе системы
 	}
 	f, err := os.Create(path.Join(folderPath, "daemon.toml"))
 	if err != nil {
@@ -75,7 +85,7 @@ func (c *Commands) init(cCtx *cli.Context) error {
 	}
 
 	cliConfig := map[string]any{
-		"serverIpAddr":      "127.0.0.1:8000",
+		"server_url":        "127.0.0.1:8000/nodes",
 		"replication_count": 5,
 	}
 	f, err = os.Create(path.Join(folderPath, "cli.toml"))
@@ -102,7 +112,7 @@ func (c *Commands) init(cCtx *cli.Context) error {
 	}
 
 	f, err = os.Create(path.Join(folderPath, "files.json"))
-	if err := json.NewEncoder(f).Encode([]string{}); err != nil {
+	if err := json.NewEncoder(f).Encode(map[string]string{}); err != nil {
 		return err
 	}
 	if err := f.Close(); err != nil {

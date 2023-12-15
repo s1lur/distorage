@@ -17,8 +17,7 @@ if typing.TYPE_CHECKING:
 
 @dataclass
 class Event:
-    kind: str
-    payload: bytes
+    kind: int
 
     def __str__(self):
         return f'Event<{self.kind}>'
@@ -66,7 +65,10 @@ class WSAccessor(BaseAccessor):
             request: 'Request',
             close_callback: typing.Callable[[str], typing.Awaitable[typing.Any]] | None = None,
     ) -> str:
-        ws_response = WebSocketResponse()
+        ws_response = WebSocketResponse(
+            receive_timeout=self.CONNECTION_TIMEOUT_SECONDS,
+            autoping=False
+        )
         await ws_response.prepare(request)
         connection_id = str(uuid.uuid4())
 
@@ -117,12 +119,14 @@ class WSAccessor(BaseAccessor):
 
     async def stream(self, connection_id: str) -> typing.AsyncIterable[Event]:
         async for message in self._connections[connection_id].session:
-            await self.refresh_connection(connection_id)
-            yield Event(kind=message.type, payload=message.data)
+            if message.type == aiohttp.WSMsgType.PING:
+                await self._connections[connection_id].session.pong()
+                await self.refresh_connection(connection_id)
+            yield Event(kind=message.type)
 
-    async def initial_info(self, connection_id: str) -> typing.Tuple[str, bytes]:
+    async def initial_info(self, connection_id: str) -> typing.Tuple[str, str]:
         return (self._connections[connection_id].ip_addr,
-                await self._connections[connection_id].session.receive_bytes(timeout=10))
+                (await self._connections[connection_id].session.receive_bytes(timeout=10)).hex())
 
     async def refresh_connection(self, connection_id: str):
         self._connections[connection_id].timeout_task.cancel()

@@ -14,8 +14,8 @@ type Crypto interface {
 	AESEncrypt(key []byte, plaintext []byte) ([]byte, error)
 	AESDecrypt(key []byte, ciphertext []byte) ([]byte, error)
 	Hash(contents []byte) []byte
-	ReadECDSAPrivKey(path string) (*ecdsa.PrivateKey, error)
-	ReadAesKey(path string) ([]byte, error)
+	ReadECDSAPrivKey() (*ecdsa.PrivateKey, error)
+	ReadAesKey() ([]byte, error)
 	PrepareVerification(aesKey []byte, ecdsaKey *ecdsa.PrivateKey) ([]byte, error)
 }
 
@@ -23,7 +23,7 @@ type Storage interface {
 	GetFileInfos() (map[uuid.UUID]entity.FileInfo, error)
 	WriteFileInfos(fileInfos map[uuid.UUID]entity.FileInfo) error
 	GetFileInfo(uuid uuid.UUID) (*entity.FileInfo, error)
-	AppendFileInfo(fileInfo entity.FileInfo) error
+	AppendFileInfo(fileInfo entity.FileInfo) (*uuid.UUID, error)
 	DeleteFileInfo(uuid uuid.UUID) error
 	UpdateFileInfo(uuid uuid.UUID, fileInfo entity.FileInfo) error
 }

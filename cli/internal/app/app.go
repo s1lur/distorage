@@ -5,18 +5,13 @@ import (
 	c "cli/internal/commands"
 	"cli/internal/usecase"
 	"github.com/urfave/cli/v2"
+	"path"
 )
 
-func InitApp(cfg *config.Config) *cli.App {
-	cryptoUC := usecase.NewCryptoUC()
-	serverUC := usecase.NewServerUC(cfg.ServerIpAddr)
-	storageUC := usecase.NewStorageUC("~/.distorage/files.json")
-	commands := c.NewCommands(cfg, cryptoUC, serverUC, storageUC)
-
+func InitApp(cfg *config.Config, homeDir string) *cli.App {
 	app := &cli.App{
 		Name:        "Distorage CLI",
 		Description: "CLI for interacting with Distorage system",
-		Commands:    commands.GetCommands(),
 		Flags: []cli.Flag{
 			&cli.IntFlag{
 				Name:  "verbosity",
@@ -30,5 +25,15 @@ func InitApp(cfg *config.Config) *cli.App {
 			},
 		},
 	}
+	cryptoUC := usecase.NewCryptoUC(path.Join(homeDir, ".distorage", "keys.json"))
+	storageUC := usecase.NewStorageUC(path.Join(homeDir, ".distorage", "files.json"))
+	if cfg != nil {
+		serverUC := usecase.NewServerUC(cfg.ServerURL)
+		commands := c.NewCommands(cfg, cryptoUC, serverUC, storageUC)
+		app.Commands = commands.GetCommands()
+	} else {
+		app.Commands = c.InitCommandOnly(cryptoUC, storageUC)
+	}
+
 	return app
 }

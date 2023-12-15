@@ -24,7 +24,7 @@ func (c *Commands) GetUploadCommand() *cli.Command {
 }
 
 func (c *Commands) uploadFile(body []byte, conn *websocket.Conn) error {
-	ecdsaPrivKey, err := c.crypto.ReadECDSAPrivKey("~/.distorage/keys.json")
+	ecdsaPrivKey, err := c.crypto.ReadECDSAPrivKey()
 	if err != nil {
 		return err
 	}
@@ -61,14 +61,15 @@ func (c *Commands) upload(cCtx *cli.Context) error {
 		totalFiles, deletedFiles, err := c.Cleanup(cCtx)
 		if verbosity > 0 {
 			if err != nil {
-				log.Printf("error during cleanup: %e\n", err)
+				fmt.Printf("error during cleanup: %e\n", err)
+			} else if totalFiles > 0 {
+				fmt.Printf("successfully cleaned up %d/%d files\n", deletedFiles, totalFiles)
 			}
-			log.Printf("successfully cleaned up %d/%d files", deletedFiles, totalFiles)
 		}
 	}
 	// read file
-	path := cCtx.Args().First()
-	contents, err := os.ReadFile(path)
+	filePath := cCtx.Args().First()
+	contents, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
@@ -76,7 +77,7 @@ func (c *Commands) upload(cCtx *cli.Context) error {
 	contentsHash := hex.EncodeToString(c.crypto.Hash(contents))
 
 	// encrypt file
-	aesKey, err := c.crypto.ReadAesKey("~/.distorage/keys.json")
+	aesKey, err := c.crypto.ReadAesKey()
 	if err != nil {
 		return err
 	}
@@ -100,7 +101,7 @@ func (c *Commands) upload(cCtx *cli.Context) error {
 		return err
 	}
 	if verbosity > 1 {
-		log.Printf("%d availble nodes, choosing %d per chunk\n", len(nodes), CHUNK_SIZE)
+		log.Printf("%d availble nodes, choosing %d per chunk\n", len(nodes), min(c.cfg.ReplicationCount, len(nodes)))
 	}
 
 	// upload file
@@ -108,23 +109,31 @@ func (c *Commands) upload(cCtx *cli.Context) error {
 	if verbosity == 1 {
 		bar = progressbar.Default(int64(len(chunks)))
 	}
-	chunkInfos := make([]entity.ChunkInfo, len(chunks))
+	chunkInfos := make([]entity.ChunkInfo, 0)
 	for i, chunk := range chunks {
 		chunkHash := hex.EncodeToString(c.crypto.Hash(chunk))
 		it := 0
-		storageNodes := make([]string, c.cfg.ReplicationCount)
+		storageNodes := make([]string, 0)
 		for addr, ip := range nodes {
+			ip = fmt.Sprintf("%s:53591", ip)
 			if it >= c.cfg.ReplicationCount {
 				break
 			}
 			u := url.URL{Scheme: "ws", Host: ip, Path: fmt.Sprintf("/store/%s", chunkHash)}
-			if verbosity > 1 {
-				log.Printf("connecting to %s\n", u.String())
-			}
-			conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+			nodeURL, err := url.PathUnescape(u.String())
 			if err != nil {
 				if verbosity > 1 {
-					log.Fatalf("dial to %s error: %e\n", ip, err)
+					log.Printf("error decoding node URL: %e\n", err)
+				}
+				continue
+			}
+			if verbosity > 1 {
+				log.Printf("connecting to %s\n", nodeURL)
+			}
+			conn, _, err := websocket.DefaultDialer.Dial(nodeURL, nil)
+			if err != nil {
+				if verbosity > 1 {
+					log.Printf("dial to %s error: %e\n", ip, err)
 				}
 				continue
 			}
@@ -132,7 +141,7 @@ func (c *Commands) upload(cCtx *cli.Context) error {
 			err = c.uploadFile(chunk, conn)
 			if err != nil {
 				if verbosity > 1 {
-					log.Fatalf("failed to upload chunk #%d to %s: %e", i, ip, err)
+					log.Printf("failed to upload chunk #%d to %s: %e\n", i, ip, err)
 				}
 				continue
 			}
@@ -155,23 +164,26 @@ func (c *Commands) upload(cCtx *cli.Context) error {
 		_ = bar.Finish()
 	}
 	if verbosity > 0 {
-		log.Printf("successfully uploaded %d chunks\n", len(chunks))
+		fmt.Printf("successfully uploaded %d chunks\n", len(chunks))
 	}
 
 	// store info locally
 	fileInfo := entity.FileInfo{
-		Name:   filepath.Base(path),
-		Hash:   contentsHash,
-		Size:   len(contents),
-		Chunks: chunkInfos,
+		Name:      filepath.Base(filePath),
+		Available: true,
+		Hash:      contentsHash,
+		Size:      len(contents),
+		Chunks:    chunkInfos,
 	}
 
-	err = c.storage.AppendFileInfo(fileInfo)
+	fileUUID, err := c.storage.AppendFileInfo(fileInfo)
 	if err != nil {
 		return err
 	}
 	if verbosity > 0 {
-		log.Printf("successfully stored info about uploaded file\n")
+		fmt.Printf("successfully stored info about uploaded file\n")
+		fmt.Printf("you can download it later with\n")
+		fmt.Printf("distorage download %s\n", fileUUID)
 	}
 	return nil
 }

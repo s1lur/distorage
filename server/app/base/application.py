@@ -12,7 +12,6 @@ class Application(web.Application):
 
 class Request(web.Request):
     user_id: str
-    remote: str
 
     @property
     def app(self) -> "Application":

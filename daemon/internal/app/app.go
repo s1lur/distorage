@@ -33,7 +33,6 @@ func Run(cfg *config.Config) {
 	d, err := cntxt.Reborn()
 	if err != nil {
 		log.Fatal("Unable to run: ", err)
-		return
 	}
 	if d != nil {
 		return
@@ -56,7 +55,7 @@ func Run(cfg *config.Config) {
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
 	go connectToServer(
-		cfg.ServerIpAddr,
+		cfg.ServerURL,
 		byteAddr,
 		interrupt)
 
@@ -76,31 +75,49 @@ func Run(cfg *config.Config) {
 	log.Fatalf("app - run - wsServer.Notify: %s", err)
 }
 
-func connectToServer(serverIpAddr string, addr []byte, interrupt chan os.Signal) {
-	u := url.URL{Scheme: "ws", Host: serverIpAddr, Path: "/connect/"}
-	log.Printf("connecting to %s", u.String())
+func connectToServer(serverURL string, addr []byte, interrupt chan os.Signal) {
+	u := url.URL{Scheme: "ws", Host: serverURL}
+	serverPath, err := url.PathUnescape(u.String())
+	if err != nil {
+		log.Fatalf("error parsing url: %e", err)
+	}
+	log.Printf("connecting to %s", serverPath)
 
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	c, _, err := websocket.DefaultDialer.Dial(serverPath, nil)
 	if err != nil {
 		log.Fatal("dial:", err)
+		return
 	}
+	c.SetPongHandler(func(string) error { log.Println("received pong from server"); return nil })
 	defer c.Close()
 
 	done := make(chan struct{})
 
-	err = c.WriteMessage(websocket.TextMessage, addr)
+	log.Printf("sending address")
+	err = c.WriteMessage(websocket.BinaryMessage, addr)
 	if err != nil {
 		log.Fatal("connectToServer - error sending message: ", err)
 		return
 	}
 	go func() {
+		defer c.Close()
 		defer close(done)
-		err = c.WriteMessage(websocket.PingMessage, []byte{})
-		if err != nil {
-			log.Println("connectToServer - write:", err)
-			return
+		go func() {
+			for {
+				if _, _, err := c.NextReader(); err != nil {
+					break
+				}
+			}
+		}()
+		for {
+			log.Println("pinging server")
+			err = c.WriteMessage(websocket.PingMessage, []byte{})
+			if err != nil {
+				log.Println("write to server:", err)
+				return
+			}
+			time.Sleep(20 * time.Second)
 		}
-		time.Sleep(20)
 	}()
 
 	ticker := time.NewTicker(time.Second)

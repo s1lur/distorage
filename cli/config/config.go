@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"github.com/ilyakaznacheev/cleanenv"
 	"os"
+	"path"
 )
 
 type Config struct {
-	ServerIpAddr     string `toml:"server_ip_addr"`
+	ServerURL        string `toml:"server_url"`
 	ReplicationCount int    `toml:"replication_count" env-default:"5"`
 }
 
-func NewConfig() (*Config, error) {
-	configPath := "~/.distorage/cli.toml"
+func NewConfig(homeDir string) (*Config, error) {
+	configPath := path.Join(homeDir, ".distorage", "cli.toml")
 	if _, err := os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("config file not found! please run distorage init")
 	}

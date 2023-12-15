@@ -12,11 +12,7 @@ import (
 
 func (c *Commands) executePreamble(ecdsaPrivKey *ecdsa.PrivateKey, conn *websocket.Conn) ([]byte, error) {
 	ecdsaPubKey := ecdsaPrivKey.PublicKey
-	marshalledEcdsaPubKey, err := x509.MarshalPKIXPublicKey(ecdsaPubKey)
-	if err != nil {
-		return nil, err
-	}
-	err = conn.WriteMessage(websocket.BinaryMessage, marshalledEcdsaPubKey)
+	marshalledEcdsaPubKey, err := x509.MarshalPKIXPublicKey(&ecdsaPubKey)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +26,10 @@ func (c *Commands) executePreamble(ecdsaPrivKey *ecdsa.PrivateKey, conn *websock
 	if err != nil {
 		return nil, err
 	}
-	err = conn.WriteMessage(websocket.BinaryMessage, marshalledPubKey)
+	msgBody := make([]byte, len(marshalledEcdsaPubKey)+len(marshalledPubKey))
+	copy(msgBody[:len(marshalledEcdsaPubKey)], marshalledEcdsaPubKey)
+	copy(msgBody[len(marshalledEcdsaPubKey):], marshalledPubKey)
+	err = conn.WriteMessage(websocket.BinaryMessage, msgBody)
 	if err != nil {
 		return nil, err
 	}
@@ -66,15 +65,23 @@ func (c *Commands) Cleanup(cCtx *cli.Context) (int, int, error) {
 		var leftChunks []entity.ChunkInfo
 		// send delete request to every node
 		for _, chunk := range fileInfo.Chunks {
-			var leftNodes []string
+			leftNodes := make([]string, 0)
 			for _, nodeAddr := range chunk.Nodes {
 				nodeIp, exists := nodes[nodeAddr]
 				if !exists {
 					leftNodes = append(leftNodes, nodeAddr)
 					continue
 				}
+				nodeIp = fmt.Sprintf("%s:53591", nodeIp)
 				u := url.URL{Scheme: "ws", Host: nodeIp, Path: fmt.Sprintf("/delete/%s", chunk.Hash)}
-				conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+				nodeURL, err := url.PathUnescape(u.String())
+				if err != nil {
+					//if verbosity > 1 {
+					//	log.Fatalf("error decoding node url: %e", err)
+					//}
+					continue
+				}
+				conn, _, err := websocket.DefaultDialer.Dial(nodeURL, nil)
 				if err != nil {
 					leftNodes = append(leftNodes, nodeAddr)
 					continue

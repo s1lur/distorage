@@ -88,16 +88,16 @@ func (f *StorageUC) StoreFile(fileName string, addr []byte, contents []byte) err
 	}
 
 	// запись служебной информации
-	fileContents := make([]byte, MAGIC_SIZE+ADDR_SIZE+len(contents)+CRC32_SIZE)
+	fileContents := make([]byte, MAGIC_SIZE+ADDR_SIZE+len(contents))
 	copy(fileContents[:MAGIC_SIZE], MAGIC[:])
 	copy(fileContents[MAGIC_SIZE:MAGIC_SIZE+ADDR_SIZE], addr)
-	copy(fileContents[MAGIC_SIZE+ADDR_SIZE:MAGIC_SIZE+ADDR_SIZE+len(contents)], contents)
+	copy(fileContents[MAGIC_SIZE+ADDR_SIZE:], contents)
 	buf := new(bytes.Buffer)
 	err = binary.Write(buf, binary.LittleEndian, crc32.ChecksumIEEE(fileContents))
 	if err != nil {
 		return err
 	}
-	copy(fileContents[MAGIC_SIZE+ADDR_SIZE+len(contents):], buf.Bytes())
+	fileContents = append(fileContents, buf.Bytes()...)
 
 	// запись файла в файловую систему устройства
 	_, err = file.Write(fileContents)

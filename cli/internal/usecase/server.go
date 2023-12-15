@@ -8,19 +8,20 @@ import (
 )
 
 type ServerUC struct {
-	serverAddr string
+	serverURL string
 }
 
-func NewServerUC(serverIpAddr string) *ServerUC {
-	u := url.URL{Scheme: "http", Host: serverIpAddr, Path: "/nodes"}
+func NewServerUC(serverURL string) *ServerUC {
+	u := url.URL{Scheme: "http", Host: serverURL}
+	serverURL, _ = url.PathUnescape(u.String())
 	return &ServerUC{
-		serverAddr: u.String(),
+		serverURL: serverURL,
 	}
 }
 
 func (s *ServerUC) GetAvailableNodes() (map[string]string, error) {
 	availableNodes := make(map[string]string)
-	resp, err := http.Get(s.serverAddr)
+	resp, err := http.Get(s.serverURL)
 	if err != nil {
 		return nil, err
 	}

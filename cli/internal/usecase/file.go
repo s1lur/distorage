@@ -50,13 +50,14 @@ func (s *StorageUC) GetFileInfo(uuid u.UUID) (*entity.FileInfo, error) {
 	return &fileInfo, nil
 }
 
-func (s *StorageUC) AppendFileInfo(fileInfo entity.FileInfo) error {
+func (s *StorageUC) AppendFileInfo(fileInfo entity.FileInfo) (*u.UUID, error) {
 	fileInfos, err := s.GetFileInfos()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	fileInfos[u.New()] = fileInfo
-	return s.WriteFileInfos(fileInfos)
+	uuid := u.New()
+	fileInfos[uuid] = fileInfo
+	return &uuid, s.WriteFileInfos(fileInfos)
 }
 
 func (s *StorageUC) UpdateFileInfo(uuid u.UUID, fileInfo entity.FileInfo) error {
@@ -83,5 +84,9 @@ func (s *StorageUC) DeleteFileInfo(uuid u.UUID) error {
 		return fmt.Errorf("file %s not found", uuid)
 	}
 	delete(fileInfos, uuid)
+	err = s.WriteFileInfos(fileInfos)
+	if err != nil {
+		return err
+	}
 	return nil
 }
